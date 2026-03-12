@@ -1,0 +1,109 @@
+// Flow Prisma schema (migrated to Next.js root)
+// Keep it minimal: Users, Channels, Records, EnergyContext.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordKind {
+  TEXT
+  VOICE
+  IMAGE
+  VIDEO
+  MIXED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  email     String?  @unique
+  phone     String?  @unique
+  handle    String?  @unique
+  timezone  String   @default("Asia/Shanghai")
+  locale    String   @default("zh-CN")
+
+  channels  Channel[]
+  records   Record[]
+}
+
+model Channel {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name       String
+  colorHex   String?
+  emoji      String?
+  isPinned   Boolean  @default(false)
+  archivedAt DateTime?
+
+  records    Record[]
+
+  @@index([userId, isPinned])
+}
+
+model Record {
+  id              String     @id @default(cuid())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  userId          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  channelId       String?
+  channel         Channel?   @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  kind            RecordKind @default(TEXT)
+  occurredAt      DateTime   @default(now())
+
+  title           String?
+  text            String?
+  media           Json?
+
+  tags            String[]   @default([])
+
+  summary         String?
+  sentiment       Float?
+
+  energyContextId String?
+  energyContext   EnergyContext? @relation(fields: [energyContextId], references: [id], onDelete: SetNull)
+
+  @@index([userId, occurredAt])
+  @@index([channelId, occurredAt])
+}
+
+model EnergyContext {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  date        DateTime
+  timezone    String
+
+  ganzhiYear  String
+  ganzhiMonth String
+  ganzhiDay   String
+
+  elements    Json
+  balanceHint String?
+
+  adviceShort String
+  adviceLong  String?
+
+  model       String?
+  promptHash  String?
+
+  records     Record[]
+
+  @@index([date, timezone])
+}
+

@@ -1,0 +1,123 @@
+// Lightweight schema for Flow
+// - PostgreSQL recommended, but models are provider-agnostic.
+// - Keep it minimal: Users, Channels (storylines), Records, EnergyContext.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordKind {
+  TEXT
+  VOICE
+  IMAGE
+  VIDEO
+  MIXED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // App identity
+  email     String?  @unique
+  phone     String?  @unique
+  handle    String?  @unique
+  timezone  String   @default("Asia/Shanghai")
+  locale    String   @default("zh-CN")
+
+  // Relations
+  channels  Channel[]
+  records   Record[]
+}
+
+model Channel {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // “故事线”：恋爱 / 宠物 / 事业 / 家庭...
+  name      String
+  colorHex  String?  // UI 卡片色（冷色调为主）
+  emoji     String?  // 可选；不做古风装饰，仅做轻量标识
+  isPinned  Boolean  @default(false)
+  archivedAt DateTime?
+
+  records   Record[]
+
+  @@index([userId, isPinned])
+}
+
+model Record {
+  id          String     @id @default(cuid())
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  channelId   String?
+  channel     Channel?   @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  kind        RecordKind @default(TEXT)
+  occurredAt  DateTime   @default(now()) // 记录所指向的“发生时间”
+
+  // Core content (minimal)
+  title       String?
+  text        String?
+  media       Json?      // {uri, mime, durationMs, width, height...} 多模态元信息
+
+  // Auto tagging
+  tags        String[]   @default([]) // e.g. ["沟通","运动","陪伴","睡眠"]
+
+  // AI enrichment (optional)
+  summary     String?
+  sentiment   Float?     // [-1..1] optional
+
+  // Link to context used to generate advice for this day/record
+  energyContextId String?
+  energyContext   EnergyContext? @relation(fields: [energyContextId], references: [id], onDelete: SetNull)
+
+  @@index([userId, occurredAt])
+  @@index([channelId, occurredAt])
+}
+
+model EnergyContext {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  // Scope: typically “today”
+  date        DateTime // store at 00:00 in user's timezone or use UTC + tz in payload
+  timezone    String
+
+  // Ganzhi
+  ganzhiYear  String
+  ganzhiMonth String
+  ganzhiDay   String
+
+  // Five-element distribution & notes from backend analysis
+  elements    Json     // e.g. { wood: 0.6, fire: 0.2, earth: 0.3, metal: 0.4, water: 0.7 }
+  balanceHint String?  // short internal hint, not necessarily user-facing
+
+  // User-facing suggestions (already humanized)
+  adviceShort String   // e.g. "今日宜：深度沟通"
+  adviceLong  String?  // optional richer paragraph
+
+  // Traceability
+  model       String?  // "gpt-4.1-mini" / vendor model id
+  promptHash  String?  // safe hash of prompt (no raw PII)
+
+  // Relations
+  records     Record[]
+
+  @@index([date, timezone])
+}
+
